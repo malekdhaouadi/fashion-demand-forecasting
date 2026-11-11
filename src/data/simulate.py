@@ -3,8 +3,8 @@
 Images and labels are REAL (Fashion Product Images). Sales are SIMULATED.
 
 Run from the project root:
-    python -m src.data.simulate --style-effect 0.3
-    python -m src.data.simulate --style-effect 0.0   # null experiment
+    python -m src.data.simulate --style-col cluster --style-effect 0.3
+    python -m src.data.simulate --style-col cluster --style-effect 0.0   # null experiment
 """
 import argparse
 from pathlib import Path
@@ -97,23 +97,42 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--style-effect", type=float, default=0.3,
                     help="max yearly log-growth of a style group; 0 = off")
-    ap.add_argument("--style-col", default="baseColour",
-                    help="TEMPORARY stand-in for the visual cluster id")
+    ap.add_argument("--style-col", default="cluster",
+                    help="column driving the style effect: 'cluster' (from "
+                         "clusters.csv) or any column of products.csv, e.g. baseColour")
+    ap.add_argument("--clusters-file", default="clusters.csv",
+                    help="file in data/processed/ used when --style-col cluster")
     ap.add_argument("--seed", type=int, default=SEED)
     args = ap.parse_args()
 
     products = pd.read_csv(PROCESSED / "products.csv")
+
+    if args.style_col == "cluster":
+        cl = pd.read_csv(PROCESSED / args.clusters_file)[["id", "cluster"]]
+        products = products.merge(cl, on="id", how="left")
+        assert products["cluster"].notna().all(), "some products have no cluster"
+
     sales = simulate(products, args.style_col, args.style_effect, args.seed)
 
-    tag = f"style{args.style_effect}"
+    tag = f"{args.style_col}_style{args.style_effect}"
     sales.to_parquet(PROCESSED / f"sales_{tag}.parquet", index=False)
 
-    weekly = (sales.groupby(["articleType", "week"], as_index=False)
-                   .agg(sales=("sales", "sum"), price=("price", "mean"),
-                        promo=("promo", "max")))
+    agg = dict(sales=("sales", "sum"), price=("price", "mean"),
+               promo=("promo", "max"))
+
+    # category level (style effects partly cancel here)
+    weekly = sales.groupby(["articleType", "week"], as_index=False).agg(**agg)
     weekly.to_parquet(PROCESSED / f"category_weekly_{tag}.parquet", index=False)
 
+    # series level: category x style group (the unit we will really forecast)
+    sales["series_id"] = (sales["articleType"] + "|"
+                          + sales["style_group"].astype(str))
+    series = (sales.groupby(["series_id", "articleType", "style_group", "week"],
+                            as_index=False).agg(**agg))
+    series.to_parquet(PROCESSED / f"series_weekly_{tag}.parquet", index=False)
+
     print(f"{len(sales):,} product-week rows -> sales_{tag}.parquet")
+    print(f"{series['series_id'].nunique()} series -> series_weekly_{tag}.parquet")
     print(weekly.groupby("articleType")["sales"].mean().round(0))
 
 

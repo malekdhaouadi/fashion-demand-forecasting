@@ -28,20 +28,21 @@ def rolling_origin(n_weeks, initial=104, horizon=4, step=4):
         train_end += step
 
 
-def run_backtest(weekly, forecast_fn, initial=104, horizon=4, step=4):
-    """weekly: DataFrame with articleType, week, sales.
+def run_backtest(weekly, forecast_fn, initial=104, horizon=4, step=4,
+                 key="articleType"):
+    """weekly: DataFrame with <key>, week, sales.
     forecast_fn(train: np.ndarray, horizon: int) -> np.ndarray
     The function only receives the training part, so it cannot peek."""
     rows = []
-    for cat, g in weekly.groupby("articleType"):
+    for s, g in weekly.groupby(key):
         g = g.sort_values("week")
         y = g["sales"].to_numpy(dtype=float)
         weeks = g["week"].to_numpy()
         for fold, (a, b) in enumerate(rolling_origin(len(y), initial, horizon, step)):
             yhat = forecast_fn(y[:a], horizon)
             for k in range(horizon):
-                rows.append((cat, fold, weeks[a + k], y[a + k], yhat[k]))
-    return pd.DataFrame(rows, columns=["articleType", "fold", "week", "y", "yhat"])
+                rows.append((s, fold, weeks[a + k], y[a + k], yhat[k]))
+    return pd.DataFrame(rows, columns=["series", "fold", "week", "y", "yhat"])
 
 
 def summarize(res):
