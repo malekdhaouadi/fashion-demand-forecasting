@@ -20,6 +20,7 @@ import mlflow
 from src import tracking
 
 from src.models.evaluate import rolling_origin
+from src.data.validate import validate_or_exit
 
 PROCESSED = Path("data/processed")
 HORIZON = 4
@@ -225,6 +226,7 @@ def main() -> None:
     ap.add_argument("--horizon", type=int, default=4)
     ap.add_argument("--step", type=int, default=4)
     args = ap.parse_args()
+    validate_or_exit("sales", args.tag)
 
     data = load(args.tag)
     res = pd.concat([run_split(s, args, data) for s in range(args.n_splits)],

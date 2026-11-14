@@ -18,6 +18,7 @@ from src import tracking
 
 from src.features.build import BASE_FEATURES, visual_features
 from src.models.evaluate import mae, rmse, rolling_origin, weighted_error
+from src.data.validate import validate_or_exit
 
 PROCESSED = Path("data/processed")
 
@@ -93,6 +94,7 @@ def main() -> None:
     ap.add_argument("--log-model", action="store_true",
                     help="also fit on ALL weeks and log the 4 quantile models")
     args = ap.parse_args()
+    validate_or_exit("features", args.tag)
 
     feat_file = PROCESSED / f"features_{args.tag}.parquet"
     df = pd.read_parquet(feat_file)
