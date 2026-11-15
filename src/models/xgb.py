@@ -29,10 +29,11 @@ PARAMS = dict(n_estimators=300, learning_rate=0.05, max_depth=4,
               random_state=42, n_jobs=-1)
 
 
-def fit_models(Xtr, ytr) -> dict:
+def fit_models(Xtr, ytr, params=None) -> dict:
+    p = {**PARAMS, **(params or {})}
     models = {}
     for q in QUANTILES:
-        m = XGBRegressor(objective="reg:quantileerror", quantile_alpha=q, **PARAMS)
+        m = XGBRegressor(objective="reg:quantileerror", quantile_alpha=q, **p)
         m.fit(Xtr, np.log1p(ytr))
         models[q] = m
     return models
