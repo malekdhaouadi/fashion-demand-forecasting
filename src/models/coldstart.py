@@ -11,16 +11,15 @@ Output: data/processed/coldstart_preds_<tag>.parquet
 import argparse
 from pathlib import Path
 
+import mlflow
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 from xgboost import XGBRegressor
-import mlflow
 
 from src import tracking
-
-from src.models.evaluate import rolling_origin
 from src.data.validate import validate_or_exit
+from src.models.evaluate import rolling_origin
 
 PROCESSED = Path("data/processed")
 HORIZON = 4

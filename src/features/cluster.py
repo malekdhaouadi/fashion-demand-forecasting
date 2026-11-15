@@ -9,6 +9,7 @@ import argparse
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")                      # draw to files, no window
 import matplotlib.pyplot as plt
 import numpy as np
@@ -80,7 +81,7 @@ def main() -> None:
 
         out.append(pd.DataFrame({"id": df_cat["id"], "articleType": cat,
                                  "cluster": labels,
-                                 "series_id": [f"{cat}|{l}" for l in labels]}))
+                                 "series_id": [f"{cat}|{lab}" for lab in labels]}))
 
     res = pd.concat(out, ignore_index=True)
     res.to_csv(PROCESSED / args.out, index=False)

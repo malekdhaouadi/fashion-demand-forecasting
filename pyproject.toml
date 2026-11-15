@@ -1,5 +1,33 @@
+[project]
+name = "fashion-forecast"
+version = "0.1.0"
+description = "Fashion demand forecasting with image-based style features and MLOps"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "scikit-learn",
+    "xgboost>=2.0",
+    "mlflow>=3.0",
+    "pandera>=0.20",
+    "pillow",
+    "matplotlib",
+    "torch",
+    "torchvision",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
 [tool.ruff]
 line-length = 110
 
 [tool.ruff.lint]
-ignore = ["E731"]
+select = ["E", "F", "I", "B"]
+ignore = ["E731", "B905", "B007"]
