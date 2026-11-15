@@ -14,3 +14,6 @@ test:
 
 train: validate
 	python -m src.models.baseline cluster_style0.3 series
+
+smoke:
+	python -m src.models.xgb --tag cluster_style0.3 --smoke

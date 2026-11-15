@@ -1,0 +1,10 @@
+numpy
+pandas
+pyarrow
+scikit-learn
+xgboost>=2.0
+mlflow>=3.0
+pandera>=0.20
+pillow
+pytest
+ruff

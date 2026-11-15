@@ -1,0 +1,49 @@
+name: Weekly retrain
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"        # every Monday, 06:00 UTC
+  workflow_dispatch:            # manual button
+
+permissions:
+  contents: read
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - run: pip install -r requirements-ci.txt
+
+      # keep the MLflow registry between weekly runs
+      - uses: actions/cache@v4
+        with:
+          path: |
+            mlflow.db
+            mlartifacts
+          key: mlflow-${{ github.run_id }}
+          restore-keys: mlflow-
+
+      - run: python -m src.data.fixture
+      - run: python -m src.data.simulate --style-col cluster --style-effect 0.3
+      - run: python -m src.features.build --tag cluster_style0.3 --model-clusters clusters_model.csv
+      - run: python -m src.data.validate --stage all --tag cluster_style0.3
+
+      - name: Train candidate and apply promotion rule
+        run: python -m src.models.promote
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mlflow-${{ github.run_id }}
+          path: |
+            mlflow.db
+            mlartifacts

@@ -2,23 +2,23 @@
 
 Run from the project root:
     python -m src.models.xgb --tag cluster_style0.3
-    python -m src.models.xgb --tag cluster_style0.0
+    python -m src.models.xgb --tag cluster_style0.3 --smoke      # CI mode
 Output: data/processed/preds_<tag>.parquet
 """
 import argparse
+from itertools import islice
 from pathlib import Path
 
+import mlflow
+import mlflow.xgboost
 import numpy as np
 import pandas as pd
 from xgboost import XGBRegressor
-import mlflow
-import mlflow.xgboost
 
 from src import tracking
-
+from src.data.validate import validate_or_exit
 from src.features.build import BASE_FEATURES, visual_features
 from src.models.evaluate import mae, rmse, rolling_origin, weighted_error
-from src.data.validate import validate_or_exit
 
 PROCESSED = Path("data/processed")
 
@@ -39,22 +39,27 @@ def fit_models(Xtr, ytr, params=None) -> dict:
     return models
 
 
-def fit_predict(Xtr, ytr, Xte) -> np.ndarray:
+def fit_predict(Xtr, ytr, Xte, params=None) -> np.ndarray:
     """One model per quantile. Trained on log1p(sales): quantiles are preserved
     by a monotone transform, and it puts small and large series on one scale."""
-    models = fit_models(Xtr, ytr)
+    models = fit_models(Xtr, ytr, params)
     cols = [np.expm1(models[q].predict(Xte)).clip(min=0) for q in QUANTILES]
     return np.sort(np.column_stack(cols), axis=1)      # no crossing quantiles
 
 
-def backtest(df, features, name, initial, horizon, step) -> pd.DataFrame:
+def folds(n_weeks, initial, horizon, step, limit=None):
+    gen = rolling_origin(n_weeks, initial, horizon, step)
+    return islice(gen, limit) if limit else gen
+
+
+def backtest(df, features, name, initial, horizon, step, limit=None, params=None) -> pd.DataFrame:
     weeks = np.sort(df["week"].unique())
     t = df["week"].map({w: i for i, w in enumerate(weeks)}).to_numpy()
     out = []
-    for fold, (a, b) in enumerate(rolling_origin(len(weeks), initial, horizon, step)):
+    for fold, (a, b) in enumerate(folds(len(weeks), initial, horizon, step, limit)):
         tr, te = t < a, (t >= a) & (t < b)            # train strictly before the origin
         P = fit_predict(df.loc[tr, features], df.loc[tr, "sales"].to_numpy(),
-                        df.loc[te, features])
+                        df.loc[te, features], params)
         d = df.loc[te, ["series_id", "week", "sales"]].rename(columns={"sales": "y"}).copy()
         for j, q in enumerate(QUANTILES):
             d[f"q{int(q * 100)}"] = P[:, j]
@@ -63,12 +68,12 @@ def backtest(df, features, name, initial, horizon, step) -> pd.DataFrame:
     return pd.concat(out, ignore_index=True)
 
 
-def naive(df, initial, horizon, step) -> pd.DataFrame:
+def naive(df, initial, horizon, step, limit=None) -> pd.DataFrame:
     """Seasonal naive = the lag_52 column. Sanity check against baseline.py."""
     weeks = np.sort(df["week"].unique())
     t = df["week"].map({w: i for i, w in enumerate(weeks)}).to_numpy()
     out = []
-    for fold, (a, b) in enumerate(rolling_origin(len(weeks), initial, horizon, step)):
+    for fold, (a, b) in enumerate(folds(len(weeks), initial, horizon, step, limit)):
         te = (t >= a) & (t < b)
         d = df.loc[te, ["series_id", "week", "sales"]].rename(columns={"sales": "y"}).copy()
         d["q50"] = df.loc[te, "lag_52"].to_numpy()
@@ -94,7 +99,18 @@ def main() -> None:
     ap.add_argument("--step", type=int, default=4)
     ap.add_argument("--log-model", action="store_true",
                     help="also fit on ALL weeks and log the 4 quantile models")
+    ap.add_argument("--smoke", action="store_true",
+                    help="CI mode: 25 trees, 2 folds, separate output files")
+    ap.add_argument("--max-folds", type=int, default=None)
     args = ap.parse_args()
+
+    overrides = {}
+    if args.smoke:
+        overrides["n_estimators"] = 25
+        args.max_folds = args.max_folds or 2
+    exp = "fashion-xgb-smoke" if args.smoke else "fashion-xgb"
+    suffix = "_smoke" if args.smoke else ""
+
     validate_or_exit("features", args.tag)
 
     feat_file = PROCESSED / f"features_{args.tag}.parquet"
@@ -108,12 +124,13 @@ def main() -> None:
         "base+visual": BASE_FEATURES + visual_features(df),
     }
 
-    parts = [naive(df, args.initial, args.horizon, args.step)]
+    parts = [naive(df, args.initial, args.horizon, args.step, args.max_folds)]
     for name, feats in variants.items():
         print(f"running {name} ({len(feats)} features) ...")
-        parts.append(backtest(df, feats, name, args.initial, args.horizon, args.step))
+        parts.append(backtest(df, feats, name, args.initial, args.horizon,
+                              args.step, args.max_folds, overrides))
     res = pd.concat(parts, ignore_index=True)
-    preds_file = PROCESSED / f"preds_{args.tag}.parquet"
+    preds_file = PROCESSED / f"preds_{args.tag}{suffix}.parquet"
     res.to_parquet(preds_file, index=False)
 
     # per-fold metrics -> mean +/- std across folds
@@ -149,13 +166,12 @@ def main() -> None:
     # ---------- MLflow ----------
     params = {"tag": args.tag, "initial": args.initial, "horizon": args.horizon,
               "step": args.step, "quantiles": QUANTILES, "n_folds": res.fold.nunique(),
-              **{f"xgb.{k}": v for k, v in PARAMS.items()}}
-    with tracking.run("fashion-xgb", f"xgb_{args.tag}", params=params,
-                      data_files=[feat_file]):
+              "smoke": args.smoke, **{f"xgb.{k}": v for k, v in {**PARAMS, **overrides}.items()}}
+    with tracking.run(exp, f"xgb_{args.tag}", params=params, data_files=[feat_file]):
         tracking.log_metrics(paired)
         mlflow.log_artifact(str(preds_file))
         for v in order:
-            with tracking.run("fashion-xgb", v, nested=True, tags={"variant": v}):
+            with tracking.run(exp, v, nested=True, tags={"variant": v}):
                 if v in variants:
                     mlflow.log_param("n_features", len(variants[v]))
                     mlflow.log_dict({"features": variants[v]}, "features.json")
@@ -164,9 +180,9 @@ def main() -> None:
                 for fold, row in pf.loc[v].iterrows():          # curve over folds
                     tracking.log_metrics({f"fold_{c}": row[c] for c in pf.columns}, step=int(fold))
                 if args.log_model and v in variants:
-                    models = fit_models(df[variants[v]], df["sales"].to_numpy())
+                    models = fit_models(df[variants[v]], df["sales"].to_numpy(), overrides)
                     for q, m in models.items():
-                        mlflow.xgboost.log_model(m, artifact_path=f"model_q{int(q * 100)}")
+                        mlflow.xgboost.log_model(m, name=f"model_q{int(q * 100)}")
     print("\nlogged to MLflow (run: mlflow ui --backend-store-uri sqlite:///mlflow.db)")
 
 
