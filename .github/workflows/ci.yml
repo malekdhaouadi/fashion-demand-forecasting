@@ -54,3 +54,8 @@ jobs:
         run: |
           python -m src.models.promote --n-estimators 30
           python -m src.models.promote --n-estimators 30 --max-depth 1
+      
+      - name: Export bundle and test the API
+        run: |
+          python -m src.serving.export --tag cluster_style0.3
+          python -m pytest tests/test_api.py -q
