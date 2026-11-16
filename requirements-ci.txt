@@ -8,3 +8,6 @@ pandera>=0.20
 pillow
 pytest
 ruff
+fastapi
+uvicorn
+httpx2

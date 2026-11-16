@@ -1,6 +1,6 @@
 # Fashion demand forecasting with image-based style features and MLOps
 
-![CI](https://github.com/<your-user>/<repo>/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/malekdhaouadi/fashion-demand-forecasting/actions/workflows/ci.yml/badge.svg)
 
 Can product images improve weekly demand forecasts for fashion categories, and can the
 pipeline around the model be kept reliable over time?

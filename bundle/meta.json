@@ -1,0 +1,38 @@
+{
+  "model_version": 2,
+  "trained_until": "2023-10-09",
+  "tag": "cluster_style0.3",
+  "features": [
+    "cat_code",
+    "woy",
+    "woy_sin",
+    "woy_cos",
+    "hol_newyear",
+    "hol_summer_sale",
+    "hol_blackfriday",
+    "hol_xmas",
+    "price",
+    "promo",
+    "growth",
+    "cat_lag_4",
+    "cat_roll_13",
+    "lag_4",
+    "lag_8",
+    "lag_13",
+    "lag_52",
+    "roll_4",
+    "roll_8",
+    "roll_13",
+    "season_Summer",
+    "season_Fall",
+    "season_Winter",
+    "season_Spring"
+  ],
+  "quantiles": [
+    0.1,
+    0.5,
+    0.67,
+    0.9
+  ],
+  "exported_at": "2026-11-15T13:42:25+00:00"
+}
